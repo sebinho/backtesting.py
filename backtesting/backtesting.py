@@ -220,6 +220,9 @@ class Strategy(metaclass=ABCMeta):
 
     def buy(self, *,
             size: float = _FULL_EQUITY,
+            ###########################################
+            specific_price: float = None,
+            ###########################################
             limit: Optional[float] = None,
             stop: Optional[float] = None,
             sl: Optional[float] = None,
@@ -239,10 +242,15 @@ class Strategy(metaclass=ABCMeta):
         """
         assert 0 < size < 1 or round(size) == size >= 1, \
             "size must be a positive fraction of equity, or a positive whole number of units"
-        return self._broker.new_order(size, limit, stop, sl, tp, tag)
+        ###########################################
+        return self._broker.new_order(size, specific_price, limit, stop, sl, tp, tag)
+        ###########################################
 
     def sell(self, *,
              size: float = _FULL_EQUITY,
+             ###########################################
+             specific_price: float = None,
+             ###########################################
              limit: Optional[float] = None,
              stop: Optional[float] = None,
              sl: Optional[float] = None,
@@ -265,7 +273,9 @@ class Strategy(metaclass=ABCMeta):
         """
         assert 0 < size < 1 or round(size) == size >= 1, \
             "size must be a positive fraction of equity, or a positive whole number of units"
-        return self._broker.new_order(-size, limit, stop, sl, tp, tag)
+        ###########################################
+        return self._broker.new_order(-size, specific_price, limit, stop, sl, tp, tag)
+        ###########################################
 
     @property
     def equity(self) -> float:
@@ -773,6 +783,7 @@ class _Broker:
 
     def new_order(self,
                   size: float,
+                  specific_price: float = None,
                   limit: Optional[float] = None,
                   stop: Optional[float] = None,
                   sl: Optional[float] = None,
@@ -783,6 +794,9 @@ class _Broker:
         """
         Argument size indicates whether the order is long or short
         """
+        ###########################################
+        self.specific_price = specific_price
+        ###########################################
         size = float(size)
         stop = stop and float(stop)
         limit = limit and float(limit)
@@ -791,7 +805,9 @@ class _Broker:
 
         is_long = size > 0
         assert size != 0, size
-        adjusted_price = self._adjusted_price(size)
+        ###########################################
+        adjusted_price = self._adjusted_price(size, self.specific_price)
+        ###########################################
 
         if is_long:
             if not (sl or -np.inf) < (limit or stop or adjusted_price) < (tp or np.inf):
@@ -905,10 +921,18 @@ class _Broker:
             else:
                 # Market-if-touched / market order
                 # Contingent orders always on next open
-                prev_close = data.Close[-2]
-                price = prev_close if self._trade_on_close and not order.is_contingent else open
-                if stop_price:
-                    price = max(price, stop_price) if order.is_long else min(price, stop_price)
+                ##########################################
+                if self.specific_price != None:
+                    try:
+                        price = self.specific_price[-1]
+                    except:
+                        price = self.specific_price
+                ##########################################
+                else:
+                    prev_close = data.Close[-2]
+                    price = prev_close if self._trade_on_close and not order.is_contingent else open
+                    if stop_price:
+                        price = max(price, stop_price) if order.is_long else min(price, stop_price)
 
             # Determine entry/exit bar index
             is_market_order = not order.limit and not stop_price
